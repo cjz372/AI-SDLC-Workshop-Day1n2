@@ -669,3 +669,77 @@ For questions or issues, refer to the troubleshooting section or ask Copilot Cha
 ```
 @workspace I'm having trouble with [describe issue]
 ```
+
+---
+
+## Getting Started
+
+```bash
+npm install
+cp .env.example .env.local     # then edit JWT_SECRET (32+ chars) and RP_ID / RP_ORIGIN
+npm run dev                    # http://localhost:3000
+npm run seed:holidays          # load Singapore public holidays into todos.db
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `JWT_SECRET` | Yes | none | Signs session and challenge JWTs. Must be at least 32 characters. |
+| `RP_ID` | Yes | `localhost` | WebAuthn relying party ID. Must match the site's domain. |
+| `RP_NAME` | No | `Todo App` | Display name shown during passkey registration. |
+| `RP_ORIGIN` | Yes | `http://localhost:3000` | Expected WebAuthn origin, including scheme and port. |
+| `DB_PATH` | No | `<cwd>/todos.db` | Full path to the SQLite file. Tests set `:memory:`. |
+| `RAILWAY_VOLUME_MOUNT_PATH` | No | unset | Directory holding `todos.db` when `DB_PATH` is unset (e.g. a Railway volume). |
+| `AUTH_RATE_LIMIT` | No | `120` | Max requests per window on auth routes (in-memory, per instance). |
+
+## Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Start the Next.js dev server on port 3000 |
+| `npm run build` | Production build |
+| `npm start` | Start the production server (uses `$PORT`, default 3000) |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Vitest unit tests (`tests/unit/**`) |
+| `npm run test:e2e` | Playwright end-to-end tests |
+| `npm run seed:holidays` | Seed Singapore public holidays |
+
+## Deployment
+
+**Railway (recommended).** `railway.json`, `nixpacks.toml` and `Procfile` are included; the build runs `npm run build` and the service runs `npm start`.
+
+1. Attach a volume and mount it at `/app/data`.
+2. Set `RAILWAY_VOLUME_MOUNT_PATH=/app/data` so `todos.db` lives on the volume.
+3. Set `JWT_SECRET`, `RP_ID` to the Railway domain (e.g. `your-app.up.railway.app`), and `RP_ORIGIN` to `https://your-app.up.railway.app`.
+4. Run `npm run seed:holidays` once (or via the service shell) after the first deploy.
+
+**Vercel.** `vercel.json` is included (region `sin1`), but SQLite data resets on each deploy because the filesystem is ephemeral. Use Railway, or move persistence to an external database before relying on Vercel.
+
+## Known Issues
+
+- **SQLite on Vercel is ephemeral.** Todos, users and passkeys are lost on redeploy. Use Railway with a volume, or an external DB.
+- **Holiday dates must be verified yearly** against the Ministry of Manpower (MOM) list. Seeded dates are not updated automatically.
+- **Rate limiting is in-memory per instance.** Limits are not shared across replicas and reset on restart.
+- **Browser notifications** require the user to grant permission and keep a tab open. Reminders are not delivered when the app is closed.
+
+## API Overview
+
+All routes except `/api/auth/*` require a valid session cookie and return `401` otherwise.
+
+| Area | Method and path | Purpose |
+|------|-----------------|---------|
+| Auth | `POST /api/auth/register-options`, `POST /api/auth/register-verify` | Passkey registration |
+| Auth | `POST /api/auth/login-options`, `POST /api/auth/login-verify` | Passkey login |
+| Auth | `GET /api/auth/me`, `POST /api/auth/logout` | Current user, sign out |
+| Todos | `GET /api/todos`, `POST /api/todos` | List and create todos |
+| Todos | `GET /api/todos/[id]`, `PUT /api/todos/[id]`, `DELETE /api/todos/[id]` | Read, update (completes recurring todos), delete |
+| Subtasks | `POST /api/todos/[id]/subtasks`, `PUT /api/subtasks/[id]`, `DELETE /api/subtasks/[id]` | Add, update, delete subtasks |
+| Tags | `GET /api/tags`, `POST /api/tags`, `PUT /api/tags/[id]`, `DELETE /api/tags/[id]` | Manage tags |
+| Tags | `POST /api/todos/[id]/tags`, `DELETE /api/todos/[id]/tags` | Attach and detach tags on a todo |
+| Templates | `GET /api/templates`, `POST /api/templates`, `PUT /api/templates/[id]`, `DELETE /api/templates/[id]` | Manage templates |
+| Templates | `POST /api/templates/[id]/use` | Create a todo from a template |
+| Export/Import | `GET /api/todos/export`, `POST /api/todos/import` | JSON export and import (version 1) |
+| Holidays | `GET /api/holidays` | Singapore public holidays |
+| Notifications | `GET /api/notifications/check` | Due reminders (polled every 30 seconds) |
